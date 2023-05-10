@@ -10,7 +10,8 @@ import (
 	"io/ioutil"
 	"path"
 	"runtime"
-	"sort"
+	//Removing for Auto Channel Numbering Update
+	//"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -341,7 +342,7 @@ func createXEPGDatabase() (err error) {
 		return
 	}
 
-	var getFreeChannelNumber = func(startingNumber float64) (xChannelID string) {
+	/* var getFreeChannelNumber = func(startingNumber float64) (xChannelID string) {
 
 		sort.Float64s(allChannelNumbers)
 
@@ -356,7 +357,7 @@ func createXEPGDatabase() (err error) {
 			startingNumber++
 
 		}
-	}
+	} */
 
 	var generateHashForChannel = func(m3uID string, groupTitle string, tvgID string, tvgName string, uuidKey string, uuidValue string) string {
 		hash := md5.Sum([]byte(m3uID + groupTitle + tvgID + tvgName + uuidKey + uuidValue))
@@ -489,6 +490,7 @@ func createXEPGDatabase() (err error) {
 			Data.XEPG.Channels[currentXEPGID] = xepgChannel
 
 		case false:
+			/* Removing for Auto Channel Numbering 
 			// Neuer Kanal
 			var firstFreeNumber float64 = Settings.MappingFirstChannel
 			// Check channel start number from Group Filter
@@ -506,9 +508,9 @@ func createXEPGDatabase() (err error) {
 					firstFreeNumber = start_num
 				}
 			}
-
+			*/
 			var xepg = createNewID()
-			var xChannelID = getFreeChannelNumber(firstFreeNumber)
+			//var xChannelID = getFreeChannelNumber(firstFreeNumber)
 
 			var newChannel XEPGChannelStruct
 			newChannel.FileM3UID = m3uChannel.FileM3UID
@@ -532,7 +534,9 @@ func createXEPGDatabase() (err error) {
 			newChannel.XName = m3uChannel.Name
 			newChannel.XGroupTitle = m3uChannel.GroupTitle
 			newChannel.XEPG = xepg
-			newChannel.XChannelID = xChannelID
+			//Update Channel id
+			//newChannel.XChannelID = xChannelID
+			newChannel.XChannelID = m3uChannel.TvgID
 
 			Data.XEPG.Channels[xepg] = newChannel
 
