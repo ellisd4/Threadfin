@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"path"
 	"runtime"
+
 	//Removing for Auto Channel Numbering Update
 	//"sort"
 	"strconv"
@@ -490,7 +491,7 @@ func createXEPGDatabase() (err error) {
 			Data.XEPG.Channels[currentXEPGID] = xepgChannel
 
 		case false:
-			/* Removing for Auto Channel Numbering 
+			/* Removing for Auto Channel Numbering
 			// Neuer Kanal
 			var firstFreeNumber float64 = Settings.MappingFirstChannel
 			// Check channel start number from Group Filter
@@ -536,10 +537,20 @@ func createXEPGDatabase() (err error) {
 			newChannel.XEPG = xepg
 			//Update Channel id
 			//newChannel.XChannelID = xChannelID
-			newChannel.XChannelID = m3uChannel.TvgID
+			//if strings.Contains(m3uChannel.TvgID, ".etv") {
+			//	var newTvgId = strings.Replace(m3uChannel.TvgID, ".etv", "", 1)
+			//	newChannel.XChannelID = newTvgId
+			//} else {
+			tvgIDString := string(m3uChannel.TvgID)
+			if strings.Contains(tvgIDString, ".etv") {
+				var newChannelId = strings.Replace(tvgIDString, ".etv", "", 1)
+				newChannel.XChannelID = newChannelId
+			} else {
+				newChannel.XChannelID = tvgIDString
+			}
 
+			//}
 			Data.XEPG.Channels[xepg] = newChannel
-
 		}
 
 	}
