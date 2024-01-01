@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"path"
+	"regexp"
 	"runtime"
 
 	//Removing for Auto Channel Numbering Update
@@ -616,7 +617,6 @@ func mapping() (err error) {
 				Data.XEPG.Channels[xepg] = xepgChannel
 
 				for file, xmltvChannels := range Data.XMLTV.Mapping {
-
 					if channel, ok := xmltvChannels.(map[string]interface{})[tvgID]; ok {
 
 						filters := []FilterStruct{}
@@ -793,14 +793,22 @@ func createXMLTVFile() (err error) {
 		var xepgChannel XEPGChannelStruct
 		err := json.Unmarshal([]byte(mapToJSON(dxc)), &xepgChannel)
 		if err == nil {
+			if xepgChannel.TvgName == "" {
+				xepgChannel.TvgName = xepgChannel.Name
+			}
+			if xepgChannel.XName == "" {
+				xepgChannel.XName = xepgChannel.TvgName
+			}
+
 			if xepgChannel.XActive && !xepgChannel.XHideChannel {
-				if (Settings.XepgReplaceChannelTitle && xepgChannel.XMapping == "PPV") || xepgChannel.TvgName != "" {
+				if (Settings.XepgReplaceChannelTitle && xepgChannel.XMapping == "PPV") || xepgChannel.XName != "" {
 					// Kanäle
 					var channel Channel
 					channel.ID = xepgChannel.XChannelID
 					channel.Icon = Icon{Src: imgc.Image.GetURL(xepgChannel.TvgLogo, Settings.HttpThreadfinDomain, Settings.ForceHttps, Settings.HttpsPort, Settings.HttpsThreadfinDomain)}
-					channel.DisplayName = append(channel.DisplayName, DisplayName{Value: xepgChannel.TvgName})
+					channel.DisplayName = append(channel.DisplayName, DisplayName{Value: xepgChannel.XName})
 					channel.Active = xepgChannel.XActive
+					channel.Live = true
 					xepgXML.Channel = append(xepgXML.Channel, &channel)
 				}
 
@@ -843,7 +851,6 @@ func getProgramData(xepgChannel XEPGChannelStruct) (xepgXML XMLTV, err error) {
 	}
 
 	for _, xmltvProgram := range xmltv.Program {
-
 		if xmltvProgram.Channel == channelID {
 			var program = &Program{}
 
@@ -900,9 +907,6 @@ func getProgramData(xepgChannel XEPGChannelStruct) (xepgXML XMLTV, err error) {
 			// Language (Sprache)
 			program.Language = xmltvProgram.Language
 
-			// Episodes numbers (Episodennummern)
-			getEpisodeNum(program, xmltvProgram, xepgChannel)
-
 			// Video (Videoparameter)
 			getVideo(program, xmltvProgram, xepgChannel)
 
@@ -934,10 +938,8 @@ func createLiveProgram(xepgChannel XEPGChannelStruct, channelId string) *Program
 	var program = &Program{}
 	program.Channel = channelId
 	var currentTime = time.Now()
-	startTime := time.Date(currentTime.Year(), currentTime.Month(), currentTime.Day(), 13, 0, 0, currentTime.Nanosecond(), currentTime.Location()).Format("20060102150405 -0700")
+	startTime := time.Date(currentTime.Year(), currentTime.Month(), currentTime.Day(), 12, 0, 0, currentTime.Nanosecond(), currentTime.Location()).Format("20060102150405 -0700")
 	stopTime := time.Date(currentTime.Year(), currentTime.Month(), currentTime.Day()+1, 23, 59, 59, currentTime.Nanosecond(), currentTime.Location()).Format("20060102150405 -0700")
-	program.Start = startTime
-	program.Stop = stopTime
 
 	name := ""
 	if xepgChannel.TvgName != "" {
@@ -945,6 +947,39 @@ func createLiveProgram(xepgChannel XEPGChannelStruct, channelId string) *Program
 	} else {
 		name = xepgChannel.XName
 	}
+
+	re := regexp.MustCompile(`(\d{1,2}[./]\d{1,2})[-\s](\d{1,2}:\d{2}\s*(AM|PM))`)
+	matches := re.FindStringSubmatch(name)
+	layout := "2006.1.2 3:04 PM MST"
+	if len(matches) > 0 {
+
+		if strings.Contains(matches[0], "/") {
+			matches[0] = strings.Replace(matches[0], "/", ".", 1)
+			matches[0] = strings.Replace(matches[0], "-", " ", 1)
+			layout = "2006.1.2 3:04PM MST"
+		}
+
+		timeString := matches[0]
+		if !regexp.MustCompile(`ET$`).MatchString(timeString) {
+			timeString += " ET"
+		}
+		matches[0] = strings.Replace(matches[0], "ET", "EST", 1)
+		if !strings.Contains(matches[0], "EST") {
+			matches[0] = matches[0] + " EST"
+		}
+		nyLocation, _ := time.LoadLocation("America/New_York")
+		year := currentTime.Year()
+		startTimeParsed, err := time.ParseInLocation(layout, fmt.Sprintf("%d.%s", year, matches[0]), nyLocation)
+		if err != nil {
+			showInfo("TIME PARSE ERROR: " + err.Error())
+		} else {
+			localTime := startTimeParsed.In(currentTime.Location())
+			startTime = localTime.Format("20060102150405 -0700")
+		}
+	}
+
+	program.Start = startTime
+	program.Stop = stopTime
 
 	if Settings.XepgReplaceChannelTitle && xepgChannel.XMapping == "PPV" {
 		title := []*Title{}
@@ -979,11 +1014,15 @@ func createDummyProgram(xepgChannel XEPGChannelStruct) (dummyXMLTV XMLTV) {
 
 	showInfo("Create Dummy Guide:" + "Time offset" + offset + " - " + xepgChannel.XName)
 
+	var dummyLength int
+	var err error
 	var dl = strings.Split(xepgChannel.XMapping, "_")
-	dummyLength, err := strconv.Atoi(dl[0])
-	if err != nil {
-		ShowError(err, 000)
-		return
+	if dl[0] != "" {
+		dummyLength, err = strconv.Atoi(dl[0])
+		if err != nil {
+			ShowError(err, 000)
+			return
+		}
 	}
 
 	for d := 0; d < 4; d++ {
@@ -1011,10 +1050,6 @@ func createDummyProgram(xepgChannel XEPGChannelStruct) (dummyXMLTV XMLTV) {
 			if Settings.XepgReplaceMissingImages {
 				poster.Src = imgc.Image.GetURL(xepgChannel.TvgLogo, Settings.HttpThreadfinDomain, Settings.ForceHttps, Settings.HttpsPort, Settings.HttpsThreadfinDomain)
 				epg.Poster = append(epg.Poster, poster)
-			}
-
-			if xepgChannel.XCategory != "Movie" {
-				epg.EpisodeNum = append(epg.EpisodeNum, &EpisodeNum{Value: epgStartTime.Format("2006-01-02 15:04:05"), System: "original-air-date"})
 			}
 
 			epg.New = &New{Value: ""}
